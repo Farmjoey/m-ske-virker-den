@@ -1,0 +1,42 @@
+name: build-firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests (pure logic, C++11)
+        run: sh tools/run_host_tests.sh
+
+  firmware:
+    needs: host-tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [cyd_st7789, cyd_st7789_swaprb, cyd_ili9341, cyd_ili9341_swaprb]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO (pinned)
+        run: pip install platformio==6.1.16
+      - name: Build ${{ matrix.env }}
+        run: pio run -e ${{ matrix.env }}
+      - name: Package .bin / .factory.bin / SHA-256
+        run: python tools/package_release.py ${{ matrix.env }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOVA_RIDE_${{ matrix.env }}
+          path: release/${{ matrix.env }}/*
